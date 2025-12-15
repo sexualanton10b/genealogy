@@ -6,11 +6,13 @@ using GsmApi.Dtos;
 using GsmApi.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 
 namespace GsmApi.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "genealogist,admin")]
 public class BirthEventsController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -264,6 +266,7 @@ public class BirthEventsController : ControllerBase
     // ---------- POST /api/BirthEvents ----------
 
     [HttpPost]
+    [Authorize(Roles = "genealogist,admin")]
     public async Task<ActionResult<BirthEventDto>> CreateBirthEvent([FromBody] BirthEventDto dto)
     {
         if (string.IsNullOrWhiteSpace(dto.ChildName))
@@ -282,30 +285,30 @@ public class BirthEventsController : ControllerBase
             return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
         }
 
-        var author = await EnsureDefaultAuthorAsync();
-        var source = await EnsureDefaultSourceAsync(dto.SourceName, dto.SourceType);
+        var author   = await EnsureDefaultAuthorAsync();
+        var source   = await EnsureDefaultSourceAsync(dto.SourceName, dto.SourceType);
         var location = await EnsureLocationAsync(dto.BirthPlace);
 
         var ev = new Event
         {
-            EventTypeId = eventTypeId,
-            EventDate = dto.BirthDate.Value.Date,
-            LocationId = location?.LocationId,
-            SourceId = source.SourceId,
-            AuthorId = author.AuthorId,
-            RecordNumber = ParseInt(dto.RecordNumber),
-            SocialClass = dto.SocialStatus,
-            AgeAtEvent = null,
+            EventTypeId   = eventTypeId,
+            EventDate     = dto.BirthDate.Value.Date,
+            LocationId    = location?.LocationId,
+            SourceId      = source.SourceId,
+            AuthorId      = author.AuthorId,
+            RecordNumber  = ParseInt(dto.RecordNumber),
+            SocialClass   = dto.SocialStatus,
+            AgeAtEvent    = null,
 
-            BaptismDate = null,
-            MahrAmount = null,
-            DivorceType = null,
+            BaptismDate   = null,
+            MahrAmount    = null,
+            DivorceType   = null,
 
             AdditionalNotes = BuildAdditionalNotes(dto),
-            OriginalText = JsonSerializer.Serialize(dto),
+            OriginalText    = JsonSerializer.Serialize(dto),
 
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            CreatedAt    = DateTime.UtcNow,
+            UpdatedAt    = DateTime.UtcNow
         };
 
         _db.Events.Add(ev);
@@ -315,6 +318,11 @@ public class BirthEventsController : ControllerBase
         await AddParticipantIfProvidedAsync(ev.EventId, dto.FatherPersonId, "father");
         await AddParticipantIfProvidedAsync(ev.EventId, dto.MotherPersonId, "mother");
 
+        // построить/обновить связи в Relationships на основе этого события
+        await _db.Database.ExecuteSqlRawAsync(
+            "EXEC dbo.sp_BuildRelationshipsForEvent @EventId = {0}",
+            ev.EventId);
+
         dto.EventId = ev.EventId;
 
         return CreatedAtAction(nameof(GetBirthEventById), new { id = ev.EventId }, dto);
@@ -323,6 +331,7 @@ public class BirthEventsController : ControllerBase
     // ---------- GET /api/BirthEvents/{id} ----------
 
     [HttpGet("{id:int}")]
+    [AllowAnonymous]
     public async Task<ActionResult<BirthEventDto>> GetBirthEventById(int id)
     {
         var ev = await _db.Events
@@ -432,6 +441,7 @@ public class BirthEventsController : ControllerBase
     // ---------- PUT /api/BirthEvents/{id} ----------
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "genealogist,admin")]
     public async Task<IActionResult> UpdateBirthEvent(int id, [FromBody] BirthEventDto dto)
     {
         if (string.IsNullOrWhiteSpace(dto.ChildName))
@@ -459,10 +469,10 @@ public class BirthEventsController : ControllerBase
 
         var location = await EnsureLocationAsync(dto.BirthPlace);
 
-        ev.EventDate    = dto.BirthDate.Value.Date;
-        ev.LocationId   = location?.LocationId;
-        ev.RecordNumber = ParseInt(dto.RecordNumber);
-        ev.SocialClass  = dto.SocialStatus;
+        ev.EventDate      = dto.BirthDate.Value.Date;
+        ev.LocationId     = location?.LocationId;
+        ev.RecordNumber   = ParseInt(dto.RecordNumber);
+        ev.SocialClass    = dto.SocialStatus;
         ev.AdditionalNotes = BuildAdditionalNotes(dto);
         ev.OriginalText    = JsonSerializer.Serialize(dto);
         ev.UpdatedAt       = DateTime.UtcNow;
@@ -472,6 +482,11 @@ public class BirthEventsController : ControllerBase
         await UpsertParticipantAsync(ev.EventId, dto.ChildPersonId,  "child");
         await UpsertParticipantAsync(ev.EventId, dto.FatherPersonId, "father");
         await UpsertParticipantAsync(ev.EventId, dto.MotherPersonId, "mother");
+
+        // пересобрать родственные связи по этому событию
+        await _db.Database.ExecuteSqlRawAsync(
+            "EXEC dbo.sp_BuildRelationshipsForEvent @EventId = {0}",
+            ev.EventId);
 
         return NoContent();
     }

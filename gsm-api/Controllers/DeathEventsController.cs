@@ -5,11 +5,13 @@ using GsmApi.Dtos;
 using GsmApi.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 
 namespace GsmApi.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "genealogist,admin")]
 public class DeathEventsController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -271,6 +273,7 @@ public class DeathEventsController : ControllerBase
     // ---------- POST /api/DeathEvents ----------
 
     [HttpPost]
+    [Authorize(Roles = "genealogist,admin")]
     public async Task<ActionResult<DeathEventDto>> CreateDeathEvent([FromBody] DeathEventDto dto)
     {
         if (string.IsNullOrWhiteSpace(dto.FullName))
@@ -328,6 +331,7 @@ public class DeathEventsController : ControllerBase
     // ---------- GET /api/DeathEvents/{id} ----------
 
     [HttpGet("{id:int}")]
+    [AllowAnonymous]
     public async Task<ActionResult<DeathEventDto>> GetDeathEventById(int id)
     {
         var ev = await _db.Events
@@ -407,6 +411,7 @@ public class DeathEventsController : ControllerBase
     // ---------- PUT /api/DeathEvents/{id} ----------
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "genealogist,admin")]
     public async Task<IActionResult> UpdateDeathEvent(int id, [FromBody] DeathEventDto dto)
     {
         if (string.IsNullOrWhiteSpace(dto.FullName))

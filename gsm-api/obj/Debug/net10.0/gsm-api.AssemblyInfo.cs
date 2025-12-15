@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("gsm-api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0a5fad41fe86dac91381c8e5230f4913a8ff8d3d")]
 [assembly: System.Reflection.AssemblyProductAttribute("gsm-api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("gsm-api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

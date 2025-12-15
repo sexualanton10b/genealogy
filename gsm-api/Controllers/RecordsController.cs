@@ -19,6 +19,7 @@ public class RecordsController : ControllerBase
 
     // GET api/Records/search
     [HttpGet("search")]
+    
     public async Task<ActionResult<RecordSearchResponseDto>> Search(
         [FromQuery] string? query,
         [FromQuery] string? eventType,

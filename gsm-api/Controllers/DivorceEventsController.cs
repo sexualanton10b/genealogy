@@ -8,11 +8,13 @@ using GsmApi.Dtos;
 using GsmApi.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 
 namespace GsmApi.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "genealogist,admin")]
 public class DivorceEventsController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -96,6 +98,7 @@ public class DivorceEventsController : ControllerBase
     // ===== POST =====
 
     [HttpPost]
+    [Authorize(Roles = "genealogist,admin")]
     public async Task<ActionResult<DivorceEventDto>> Create([FromBody] DivorceEventDto dto)
     {
         if (dto.DivorceDate == default)
@@ -134,6 +137,7 @@ public class DivorceEventsController : ControllerBase
     // ===== GET =====
 
     [HttpGet("{id:int}")]
+    [AllowAnonymous]
     public async Task<ActionResult<DivorceEventDto>> GetById(int id)
     {
         var ev = await _db.Events.AsNoTracking().FirstOrDefaultAsync(x => x.EventId == id);
@@ -200,6 +204,7 @@ public class DivorceEventsController : ControllerBase
     // ===== PUT =====
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "genealogist,admin")]
     public async Task<IActionResult> Update(int id, [FromBody] DivorceEventDto dto)
     {
         var ev = await _db.Events.FirstOrDefaultAsync(e => e.EventId == id);

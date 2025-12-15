@@ -8,11 +8,13 @@ using GsmApi.Dtos;
 using GsmApi.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 
 namespace GsmApi.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "genealogist,admin")]
 public class RevisionEventsController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -99,6 +101,7 @@ public class RevisionEventsController : ControllerBase
 
     // ===== POST =====
     [HttpPost]
+    [Authorize(Roles = "genealogist,admin")]
     public async Task<ActionResult<RevisionEventDto>> Create([FromBody] RevisionEventDto dto)
     {
         if (string.IsNullOrWhiteSpace(dto.FullName))
@@ -132,6 +135,7 @@ public class RevisionEventsController : ControllerBase
 
     // ===== GET =====
     [HttpGet("{id:int}")]
+    [AllowAnonymous]
     public async Task<ActionResult<RevisionEventDto>> GetById(int id)
     {
         var ev = await _db.Events.AsNoTracking().FirstOrDefaultAsync(x => x.EventId == id);
@@ -187,6 +191,7 @@ public class RevisionEventsController : ControllerBase
 
     // ===== PUT =====
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "genealogist,admin")]
     public async Task<IActionResult> Update(int id, [FromBody] RevisionEventDto dto)
     {
         var ev = await _db.Events.FirstOrDefaultAsync(x => x.EventId == id);

@@ -5,11 +5,13 @@ using GsmApi.Dtos;
 using GsmApi.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 
 namespace GsmApi.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "genealogist,admin")]
 public class MarriageEventsController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -180,6 +182,7 @@ public class MarriageEventsController : ControllerBase
     // ---- POST /api/MarriageEvents -----------------------------------------
 
     [HttpPost]
+    [Authorize(Roles = "genealogist,admin")]
     public async Task<ActionResult<MarriageEventDto>> CreateMarriageEvent([FromBody] MarriageEventDto dto)
     {
         if (!ModelState.IsValid)
@@ -192,8 +195,8 @@ public class MarriageEventsController : ControllerBase
         try
         {
             marriageTypeId = await GetMarriageEventTypeIdAsync();
-            groomRoleId = await GetParticipantRoleIdAsync("groom");
-            brideRoleId = await GetParticipantRoleIdAsync("bride");
+            groomRoleId    = await GetParticipantRoleIdAsync("groom");
+            brideRoleId    = await GetParticipantRoleIdAsync("bride");
         }
         catch (InvalidOperationException ex)
         {
@@ -202,33 +205,33 @@ public class MarriageEventsController : ControllerBase
 
         var ev = new Event
         {
-            EventTypeId = marriageTypeId,
-            EventDate = dto.MarriageDate,
-            LocationId = null,
-            SourceId = 1,   // TODO: заменить на реальный SourceId, когда появится справочник
-            AuthorId = 1,   // TODO: привязать к текущему автору/пользователю
-            RecordNumber = null,
-            MahrAmount = dto.MahrAmount,
-            DivorceType = null,
-            SocialClass = null,
-            AgeAtEvent = null,
+            EventTypeId    = marriageTypeId,
+            EventDate      = dto.MarriageDate,
+            LocationId     = null,
+            SourceId       = 1,   // TODO: твой реальный SourceId
+            AuthorId       = 1,   // TODO: текущий пользователь
+            RecordNumber   = null,
+            MahrAmount     = dto.MahrAmount,
+            DivorceType    = null,
+            SocialClass    = null,
+            AgeAtEvent     = null,
             AdditionalNotes = BuildAdditionalNotes(dto),
-            OriginalText = JsonSerializer.Serialize(dto),
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            OriginalText    = JsonSerializer.Serialize(dto),
+            CreatedAt      = DateTime.UtcNow,
+            UpdatedAt      = DateTime.UtcNow
         };
 
         _db.Events.Add(ev);
         await _db.SaveChangesAsync();
 
-        // --- Привязка участников: жених и невеста -------------------------
+        // --- Участники: жених и невеста ------------------------------------
         if (dto.GroomPersonId.HasValue)
         {
             var epGroom = new EventParticipant
             {
-                EventId = ev.EventId,
-                PersonId = dto.GroomPersonId.Value,
-                RoleId = groomRoleId,
+                EventId       = ev.EventId,
+                PersonId      = dto.GroomPersonId.Value,
+                RoleId        = groomRoleId,
                 AdditionalInfo = null
             };
             _db.EventParticipants.Add(epGroom);
@@ -238,15 +241,20 @@ public class MarriageEventsController : ControllerBase
         {
             var epBride = new EventParticipant
             {
-                EventId = ev.EventId,
-                PersonId = dto.BridePersonId.Value,
-                RoleId = brideRoleId,
+                EventId       = ev.EventId,
+                PersonId      = dto.BridePersonId.Value,
+                RoleId        = brideRoleId,
                 AdditionalInfo = null
             };
             _db.EventParticipants.Add(epBride);
         }
 
         await _db.SaveChangesAsync();
+
+        // построить/обновить Relationships на основе этого брака
+        await _db.Database.ExecuteSqlRawAsync(
+            "EXEC dbo.sp_BuildRelationshipsForEvent @EventId = {0}",
+            ev.EventId);
 
         dto.EventId = ev.EventId;
 
@@ -256,6 +264,7 @@ public class MarriageEventsController : ControllerBase
     // ---- GET /api/MarriageEvents/{id} -------------------------------------
 
     [HttpGet("{id:int}")]
+    [AllowAnonymous]
     public async Task<ActionResult<MarriageEventDto>> GetMarriageEventById(int id)
     {
         var ev = await _db.Events
@@ -348,6 +357,7 @@ public class MarriageEventsController : ControllerBase
     // ---- PUT /api/MarriageEvents/{id} -------------------------------------
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "genealogist,admin")]
     public async Task<IActionResult> UpdateMarriageEvent(int id, [FromBody] MarriageEventDto dto)
     {
         if (!ModelState.IsValid)
@@ -371,17 +381,22 @@ public class MarriageEventsController : ControllerBase
             return BadRequest("Событие с таким ID не является событием типа 'marriage'.");
 
         // Обновляем основные поля события
-        ev.EventDate = dto.MarriageDate;
-        ev.MahrAmount = dto.MahrAmount;
+        ev.EventDate      = dto.MarriageDate;
+        ev.MahrAmount     = dto.MahrAmount;
         ev.AdditionalNotes = BuildAdditionalNotes(dto);
-        ev.OriginalText = JsonSerializer.Serialize(dto);
-        ev.UpdatedAt = DateTime.UtcNow;
+        ev.OriginalText    = JsonSerializer.Serialize(dto);
+        ev.UpdatedAt       = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
 
         // Обновляем участников
         await UpsertParticipantAsync(ev.EventId, dto.GroomPersonId, "groom");
         await UpsertParticipantAsync(ev.EventId, dto.BridePersonId, "bride");
+
+        // пересобрать Relationships по этому событию
+        await _db.Database.ExecuteSqlRawAsync(
+            "EXEC dbo.sp_BuildRelationshipsForEvent @EventId = {0}",
+            ev.EventId);
 
         return NoContent();
     }
